@@ -1,0 +1,17 @@
+# Never publish signing material
+*.jks
+*.keystore
+keystore.properties
+signing/
+
+# Android and IDE output
+.gradle/
+.idea/
+local.properties
+**/build/
+*.iml
+
+# Release binaries belong in GitHub Releases, not in the repository
+*.apk
+*.aab
+*.idsig
