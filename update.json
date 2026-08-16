@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "versionCode": 6,
-  "versionName": "1.0.0",
-  "apkUrl": "https://github.com/EnoTik20/mangabuff-reader/releases/download/v1.0.0/MangaBuff-Reader-v1.0.0.apk",
-  "sha256": "d94503740f442576d1ddf034d1a38feb24a2ea3a87ac441fa59db49c7981c060",
-  "changes": "Первая публичная версия: полноэкранное чтение, избранное с обложками и прогрессом, восстановление позиции, собственные панели, открытие в браузере, отправка ссылки и безопасные обновления."
+  "versionCode": 7,
+  "versionName": "1.0.1",
+  "apkUrl": "https://github.com/EnoTik20/mangabuff-reader/releases/download/v1.0.1/MangaBuff-Reader-v1.0.1.apk",
+  "sha256": "0996f0188aa3d789be2167ef2095aa29bcf61785263d4afee56234e45b0710f7",
+  "changes": "Hotfix авторизации через Яндекс и VK."
 }

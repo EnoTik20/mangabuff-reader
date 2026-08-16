@@ -118,6 +118,8 @@ public final class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileChooserCallback;
     private boolean readerMode;
     private boolean favoritesOpenedFromReader;
+    private boolean oauthFlowActive;
+    private volatile boolean oauthProviderPageActive;
     private long lastSiteCleanupAt;
     private final ExecutorService posterExecutor = Executors.newFixedThreadPool(3);
     private final LruCache<String, Bitmap> posterCache = new LruCache<String, Bitmap>(16 * 1024) {
@@ -1840,7 +1842,8 @@ public final class MainActivity extends Activity {
                 WebResourceRequest request
         ) {
             Uri uri = request == null ? null : request.getUrl();
-            if (isBlockedTrackingOrAdRequest(uri)) {
+            boolean neededForOAuth = oauthProviderPageActive && isOAuthVisualResource(uri);
+            if (!neededForOAuth && isBlockedTrackingOrAdRequest(uri)) {
                 return new WebResourceResponse(
                         "text/plain",
                         "UTF-8",
@@ -1857,8 +1860,13 @@ public final class MainActivity extends Activity {
             progressBar.setProgress(5);
             errorPanel.setVisibility(View.GONE);
             lastSiteCleanupAt = 0L;
+            oauthProviderPageActive = isTrustedOAuthUrl(url);
             updateReaderAvailability(url);
-            scheduleSiteCleanup();
+            if (isAllowedWebUrl(url)) {
+                scheduleSiteCleanup();
+            } else if (readerMode) {
+                setReaderMode(false);
+            }
         }
 
         @Override
@@ -1882,24 +1890,34 @@ public final class MainActivity extends Activity {
         @Override
         public void onPageCommitVisible(WebView view, String url) {
             super.onPageCommitVisible(view, url);
-            injectPersistentSiteCleanup();
-            if (isChapterUrl(url)) {
-                setReaderMode(true);
+            if (isAllowedWebUrl(url)) {
+                injectPersistentSiteCleanup();
+                if (isChapterUrl(url)) {
+                    setReaderMode(true);
+                }
+                scheduleSiteCleanup();
             }
-            scheduleSiteCleanup();
         }
 
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             progressBar.setVisibility(View.GONE);
+            updateReaderAvailability(url);
 
-            if (isAllowedWebUrl(url)) {
-                preferences.edit().putString(PREF_LAST_URL, url).apply();
+            if (!isAllowedWebUrl(url)) {
+                if (readerMode) {
+                    setReaderMode(false);
+                }
+                return;
             }
 
+            preferences.edit().putString(PREF_LAST_URL, url).apply();
+            if (oauthFlowActive) {
+                oauthFlowActive = false;
+                CookieManager.getInstance().flush();
+            }
             injectPersistentSiteCleanup();
-            updateReaderAvailability(url);
             if (isChapterUrl(url)) {
                 setReaderMode(true);
             } else if (readerMode) {
@@ -2077,6 +2095,18 @@ public final class MainActivity extends Activity {
                 }
                 return false;
             }
+            if (isTrustedOAuthUrl(url)) {
+                oauthFlowActive = true;
+                saveCurrentScroll();
+                if (isFavoritesVisible()) {
+                    hideFavorites();
+                }
+                if (readerMode) {
+                    setReaderMode(false);
+                }
+                errorPanel.setVisibility(View.GONE);
+                return false;
+            }
             openExternal(Intent.ACTION_VIEW, uri);
             return true;
         }
@@ -2084,6 +2114,20 @@ public final class MainActivity extends Activity {
         if ("intent".equalsIgnoreCase(scheme)) {
             try {
                 Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
+                String fallbackUrl = intent.getStringExtra("browser_fallback_url");
+                if (isTrustedOAuthUrl(fallbackUrl)) {
+                    oauthFlowActive = true;
+                    webView.loadUrl(fallbackUrl);
+                    return true;
+                }
+                if (oauthFlowActive) {
+                    Toast.makeText(
+                            this,
+                            "Продолжите вход на странице внутри приложения",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                    return true;
+                }
                 startActivity(intent);
             } catch (URISyntaxException | ActivityNotFoundException ignored) {
                 Toast.makeText(this, "Не удалось открыть ссылку", Toast.LENGTH_SHORT).show();
@@ -2099,6 +2143,24 @@ public final class MainActivity extends Activity {
         }
 
         return true;
+    }
+
+    private boolean isTrustedOAuthUrl(String url) {
+        if (url == null) {
+            return false;
+        }
+        try {
+            Uri uri = Uri.parse(url);
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null) {
+                return false;
+            }
+            String host = uri.getHost().toLowerCase(Locale.ROOT);
+            return "oauth.yandex.ru".equals(host)
+                    || "passport.yandex.ru".equals(host)
+                    || "id.vk.ru".equals(host);
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private void openExternal(String action, Uri uri) {
@@ -2149,6 +2211,12 @@ public final class MainActivity extends Activity {
         }
         return ("yandex.ru".equals(host) || host.endsWith(".yandex.ru"))
                 && (path.startsWith("/ads/") || path.startsWith("/an/"));
+    }
+
+    private boolean isOAuthVisualResource(Uri uri) {
+        return uri != null
+                && uri.getHost() != null
+                && "avatars.mds.yandex.net".equalsIgnoreCase(uri.getHost());
     }
 
     private boolean isChapterUrl(String url) {
