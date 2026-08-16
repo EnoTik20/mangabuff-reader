@@ -4,14 +4,16 @@
 keystore.properties
 signing/
 
-# Android and IDE output
+# Android Studio and build output
 .gradle/
 .idea/
 local.properties
 **/build/
+.manual-build*/
+dist/
 *.iml
 
-# Release binaries belong in GitHub Releases, not in the repository
+# Release binaries belong in GitHub Releases
 *.apk
 *.aab
 *.idsig
